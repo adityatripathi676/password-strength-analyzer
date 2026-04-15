@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PassGuard AI — Password Dashboard</title>
+  <meta name="description" content="Analyze password strength in real-time using AI and machine learning with PassGuard's intelligent dashboard." />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .dashboard-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 720px) {
+      .dashboard-layout { grid-template-columns: 1fr; }
+    }
+
+    .input-analyze-area {
+      display: flex; gap: 0.75rem;
+    }
+    .input-analyze-area input {
+      flex: 1; font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem; letter-spacing: 0.04em;
+    }
+    .input-analyze-area .btn {
+      width: auto; padding: 0.78rem 1.25rem; flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .welcome-line {
+      font-size: 0.85rem; color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+    .page-title {
+      font-size: 1.5rem; font-weight: 800;
+      background: linear-gradient(135deg, #f1f5f9, #a5b4fc);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Results area hidden by default */
+    #results-area { display: none; }
+    #results-area.show { display: block; }
+
+    /* Idle state in score ring */
+    #idle-prompt {
+      text-align: center; padding: 2rem 0;
+      color: var(--text-muted); font-size: 0.9rem;
+    }
+    #idle-prompt .idle-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+    /* Strength color classes */
+    .s0 { color: var(--strength-0); }
+    .s1 { color: var(--strength-1); }
+    .s2 { color: var(--strength-2); }
+    .s3 { color: var(--strength-3); }
+    .s4 { color: var(--strength-4); }
+
+    .strength-pill {
+      display: inline-block; padding: 0.25rem 0.85rem;
+      border-radius: 99px; font-size: 0.82rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.07em;
+    }
+    .sp0 { background: rgba(239,68,68,0.15); color: var(--strength-0); }
+    .sp1 { background: rgba(249,115,22,0.15); color: var(--strength-1); }
+    .sp2 { background: rgba(245,158,11,0.15); color: var(--strength-2); }
+    .sp3 { background: rgba(34,197,94,0.15); color: var(--strength-3); }
+    .sp4 { background: rgba(99,102,241,0.15); color: var(--strength-4); }
+
+    /* Real-time typing bar */
+    .mini-bar-wrap { margin-top: 0.75rem; height: 3px; border-radius: 99px; overflow: hidden; background: rgba(255,255,255,0.05); }
+    .mini-bar { height: 100%; border-radius: 99px; width: 0; transition: width 0.3s ease, background 0.3s; }
+
+    .history-empty { color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 1rem 0; }
+  </style>
+</head>
+<body>
+  <div class="bg-gradient"></div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="brand">
+      <div class="brand-icon">🛡️</div>
+      <div>
+        <div class="brand-text">PassGuard AI</div>
+        <div class="brand-sub">Password Intelligence</div>
+      </div>
+    </div>
+    <div class="nav-user">
+      <span class="nav-username" id="nav-username">Welcome, <span id="username-display">—</span></span>
+      <button class="btn btn-secondary" style="width:auto;padding:.45rem 1rem;font-size:.82rem;" onclick="handleLogout()">
+        Sign Out
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <div class="container-wide" style="padding-top:2rem;">
+    <p class="welcome-line">Good to have you back 👋</p>
+    <h1 class="page-title">Password Strength Analyzer</h1>
+
+    <!-- Analyzer Input -->
+    <div class="card mb-2">
+      <div class="section-title">🔍 Analyze Password</div>
+      <div class="input-analyze-area">
+        <div class="input-wrap" style="flex:1;position:relative;">
+          <input
+            id="pw-input"
+            type="password"
+            placeholder="Enter password to analyze…"
+            class="has-icon"
+            autocomplete="off"
+            oninput="onTyping()"
+          />
+          <button class="input-icon" onclick="toggleVis('pw-input', this)" type="button" aria-label="Toggle visibility">👁️</button>
+        </div>
+        <button id="analyze-btn" class="btn btn-primary" onclick="analyzePassword()">
+          <span id="analyze-text">Analyze</span>
+          <span id="analyze-spinner" class="spinner hidden"></span>
+        </button>
+      </div>
+      <!-- Live mini strength bar -->
+      <div class="mini-bar-wrap">
+        <div class="mini-bar" id="mini-bar"></div>
+      </div>
+      <p class="text-muted mt-1" id="mini-label" style="font-size:.78rem;"></p>
+    </div>
+
+    <!-- Dashboard Layout -->
+    <div class="dashboard-layout">
+
+      <!-- LEFT: Score + Strength -->
+      <div>
+        <div class="card mb-2" id="score-card">
+          <!-- Idle prompt -->
+          <div id="idle-prompt">
+            <div class="idle-icon">🔐</div>
+            <p>Enter a password above and click <strong>Analyze</strong><br>to see your AI-powered security report.</p>
+          </div>
+
+          <!-- Results (hidden until analysis) -->
+          <div id="results-area">
+            <div class="score-ring-wrap">
+              <div class="score-ring">
+                <svg viewBox="0 0 120 120" width="140" height="140">
+                  <circle class="ring-bg" cx="60" cy="60" r="54" />
+                  <circle id="ring-fill" class="ring-fill" cx="60" cy="60" r="54" stroke="#6366f1" />
+                </svg>
+                <div class="ring-text">
+                  <span class="ring-number" id="ring-number">0</span>
+                  <span class="ring-label">/ 100</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Strength label + confidence -->
+            <div class="text-center mb-2">
+              <div id="strength-pill-el" class="strength-pill sp0">—</div>
+              &nbsp;
+              <span id="confidence-badge" class="confidence-badge">🤖 AI Confidence: —</span>
+            </div>
+
+            <!-- Strength bar -->
+            <div class="strength-meter">
+              <div class="strength-bar-track">
+                <div id="sb-fill" class="strength-bar-fill" style="width:0%"></div>
+              </div>
+              <div class="strength-label">
+                <span class="level" id="sb-label">—</span>
+                <span class="score-badge" id="sb-score">Score: —</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature breakdown -->
+        <div class="card" id="features-card" style="display:none;">
+          <div class="section-title">⚙️ Feature Analysis</div>
+          <div class="feature-grid" id="feature-grid"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Suggestions + Probabilities + History -->
+      <div>
+        <!-- AI Suggestions -->
+        <div class="card mb-2" id="suggestions-card" style="display:none;">
+          <div class="section-title">💡 AI Recommendations</div>
+          <div class="suggestions-list" id="suggestions-list"></div>
+        </div>
+
+        <!-- Class Probabilities -->
+        <div class="card mb-2" id="prob-card" style="display:none;">
+          <div class="section-title">📊 Strength Distribution</div>
+          <div class="prob-bars" id="prob-bars"></div>
+        </div>
+
+        <!-- History -->
+        <div class="card">
+          <div class="section-title">🕒 Session History</div>
+          <div id="history-list">
+            <p class="history-empty">No analyses yet this session.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    // ── Auth guard — must be checked BEFORE any render ─────────────────
+    const token = localStorage.getItem('psa_token');
+    const username = localStorage.getItem('psa_user');
+    if (!token) {
+      // No token: force redirect, suppress back navigation
+      window.location.replace('index.html');
+    }
+    document.getElementById('username-display').textContent = username || '—';
+
+    // Prevent cached page from being accessible after logout
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted && !localStorage.getItem('psa_token')) {
+        window.location.replace('index.html');
+      }
+    });
+
+    // ── Strength constants ─────────────────────────────────────────────
+    const STRENGTH_INFO = [
+      { label: 'Very Weak',  class: 'sp0', barColor: 'var(--strength-0)', ringColor: '#ef4444' },
+      { label: 'Weak',       class: 'sp1', barColor: 'var(--strength-1)', ringColor: '#f97316' },
+      { label: 'Moderate',   class: 'sp2', barColor: 'var(--strength-2)', ringColor: '#f59e0b' },
+      { label: 'Strong',     class: 'sp3', barColor: 'var(--strength-3)', ringColor: '#22c55e' },
+      { label: 'Very Strong',class: 'sp4', barColor: 'var(--strength-4)', ringColor: '#6366f1' },
+    ];
+
+    // ── Helpers ────────────────────────────────────────────────────────
+    function toast(msg, type = 'info') {
+      const icon = { success: '✅', error: '❌', info: 'ℹ️' }[type] || '💬';
+      const tc = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
+      tc.appendChild(el);
+      setTimeout(() => {
+        el.style.animation = 'slideOut 0.3s ease forwards';
+        el.addEventListener('animationend', () => el.remove());
+      }, 4000);
+    }
+
+    function toggleVis(id, btn) {
+      const el = document.getElementById(id);
+      const isPass = el.type === 'password';
+      el.type = isPass ? 'text' : 'password';
+      btn.textContent = isPass ? '🙈' : '👁️';
+    }
+
+    // ── Live typing mini-bar (heuristic, instant feedback) ────────────
+    function onTyping() {
+      const pw = document.getElementById('pw-input').value;
+      const len = pw.length;
+      let score = 0;
+      if (len >= 8)  score += 20;
+      if (len >= 12) score += 15;
+      if (len >= 16) score += 10;
+      if (/[A-Z]/.test(pw)) score += 15;
+      if (/\d/.test(pw))    score += 15;
+      if (/[^a-zA-Z0-9]/.test(pw)) score += 20;
+      if (new Set(pw).size / len > 0.6) score += 5;
+      score = Math.min(100, score);
+
+      const idx = score < 20 ? 0 : score < 40 ? 1 : score < 60 ? 2 : score < 80 ? 3 : 4;
+      const info = STRENGTH_INFO[idx];
+      document.getElementById('mini-bar').style.width = `${score}%`;
+      document.getElementById('mini-bar').style.background = info.ringColor;
+      document.getElementById('mini-label').textContent = pw.length
+        ? `Quick estimate: ${info.label}`
+        : '';
+    }
+
+    // ── Analyze ────────────────────────────────────────────────────────
+    async function analyzePassword() {
+      const pw = document.getElementById('pw-input').value;
+      if (!pw) { toast('Enter a password to analyze.', 'error'); return; }
+
+      setLoading(true);
+      try {
+        const res = await fetch(`${API}/api/analyze`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ password: pw }),
+        });
+
+        if (res.status === 401) {
+          toast('Session expired. Redirecting to login…', 'error');
+          authSignOut();
+          return;
+        }
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Analysis failed.');
+
+        renderResults(data, pw);
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function setLoading(state) {
+      document.getElementById('analyze-btn').disabled = state;
+      document.getElementById('analyze-text').classList.toggle('hidden', state);
+      document.getElementById('analyze-spinner').classList.toggle('hidden', !state);
+    }
+
+    // ── Render results ─────────────────────────────────────────────────
+    function renderResults(data, pw) {
+      const { score, strength, confidence, suggestions, class_probabilities, features } = data;
+
+      // Determine class index
+      const classMap = { 'Very Weak': 0, 'Weak': 1, 'Moderate': 2, 'Strong': 3, 'Very Strong': 4 };
+      const ci = classMap[strength] ?? 2;
+      const info = STRENGTH_INFO[ci];
+
+      // Show results area
+      document.getElementById('idle-prompt').style.display = 'none';
+      document.getElementById('results-area').classList.add('show');
+
+      // Score ring
+      const circumference = 2 * Math.PI * 54; // 339.29
+      const offset = circumference - (score / 100) * circumference;
+      const ring = document.getElementById('ring-fill');
+      ring.style.strokeDashoffset = offset;
+      ring.style.stroke = info.ringColor;
+
+      // Animated counter
+      animateCounter('ring-number', 0, Math.round(score), 800);
+
+      // Strength pill
+      const pill = document.getElementById('strength-pill-el');
+      pill.textContent = strength;
+      pill.className = `strength-pill ${info.class}`;
+
+      // Confidence badge
+      document.getElementById('confidence-badge').textContent = `🤖 AI Confidence: ${confidence}%`;
+
+      // Strength bar
+      document.getElementById('sb-fill').style.width = `${score}%`;
+      document.getElementById('sb-fill').style.background = info.barColor;
+      document.getElementById('sb-label').textContent = strength;
+      document.getElementById('sb-score').textContent = `Score: ${score}/100`;
+
+      // Features
+      renderFeatures(features);
+
+      // Suggestions
+      renderSuggestions(suggestions);
+
+      // Probabilities
+      renderProbabilities(class_probabilities);
+
+      // History
+      addHistory(pw, strength, ci);
+
+      // Show panels
+      document.getElementById('features-card').style.display = 'block';
+      document.getElementById('suggestions-card').style.display = 'block';
+      document.getElementById('prob-card').style.display = 'block';
+    }
+
+    function animateCounter(id, from, to, duration) {
+      const el = document.getElementById(id);
+      const start = performance.now();
+      function update(now) {
+        const progress = Math.min((now - start) / duration, 1);
+        el.textContent = Math.round(from + (to - from) * easeOut(progress));
+        if (progress < 1) requestAnimationFrame(update);
+      }
+      requestAnimationFrame(update);
+    }
+    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+    // ── Feature grid ──────────────────────────────────────────────────
+    function renderFeatures(features) {
+      const labels = {
+        length: 'Length', entropy: 'Entropy (bits)',
+        char_diversity: 'Char Classes', sequential_chars: 'Sequential',
+        repeated_chars: 'Repetitions', keyboard_patterns: 'Kbd Patterns',
+        leet_pattern: 'Leet Pattern', common_pattern: 'Common Pattern',
+        unique_ratio: 'Unique Ratio', has_upper: 'Uppercase',
+        has_digit: 'Has Digit', has_special: 'Special Chars',
+      };
+      const grid = document.getElementById('feature-grid');
+      grid.innerHTML = '';
+      for (const [key, val] of Object.entries(features)) {
+        const display = typeof val === 'number' && !Number.isInteger(val)
+          ? val.toFixed(3) : val;
+        grid.insertAdjacentHTML('beforeend', `
+          <div class="feature-pill">
+            <span class="fpill-label">${labels[key] || key}</span>
+            <span class="fpill-val">${display}</span>
+          </div>
+        `);
+      }
+    }
+
+    // ── Suggestions ───────────────────────────────────────────────────
+    function renderSuggestions(suggestions) {
+      const list = document.getElementById('suggestions-list');
+      if (!suggestions || suggestions.length === 0) {
+        list.innerHTML = '<div class="suggestion-item">✅ No issues detected. Great password!</div>';
+        return;
+      }
+      list.innerHTML = suggestions.map((s, i) =>
+        `<div class="suggestion-item" style="animation-delay:${i * 0.07}s">${s}</div>`
+      ).join('');
+    }
+
+    // ── Probability chart ─────────────────────────────────────────────
+    const PROB_COLORS = ['#ef4444','#f97316','#f59e0b','#22c55e','#6366f1'];
+    function renderProbabilities(probs) {
+      const container = document.getElementById('prob-bars');
+      container.innerHTML = '';
+      const entries = Object.entries(probs);
+      entries.forEach(([label, pct], i) => {
+        container.insertAdjacentHTML('beforeend', `
+          <div class="prob-row">
+            <span class="prob-name">${label}</span>
+            <div class="prob-track">
+              <div class="prob-fill" style="width:${pct}%;background:${PROB_COLORS[i]}"></div>
+            </div>
+            <span class="prob-val">${pct}%</span>
+          </div>
+        `);
+      });
+    }
+
+    // ── Session history ───────────────────────────────────────────────
+    const history = [];
+    function addHistory(pw, strength, ci) {
+      const masked = pw.slice(0, 2) + '•'.repeat(Math.max(0, pw.length - 4)) + pw.slice(-2);
+      history.unshift({ masked, strength, ci });
+      if (history.length > 6) history.pop();
+
+      const list = document.getElementById('history-list');
+      list.innerHTML = history.map(h => `
+        <div class="history-item">
+          <span class="history-pw">${h.masked}</span>
+          <span class="history-badge sp${h.ci}">${h.strength}</span>
+        </div>
+      `).join('');
+    }
+
+    // ── Logout ────────────────────────────────────────────────────────
+    async function handleLogout() {
+      try {
+        await fetch(`${API}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+      } catch (_) {}
+      authSignOut();
+    }
+
+    function authSignOut() {
+      localStorage.removeItem('psa_token');
+      localStorage.removeItem('psa_user');
+      // Replace history so back button can't return to dashboard
+      window.location.replace('index.html');
+    }
+
+    // ── Enter key ─────────────────────────────────────────────────────
+    document.getElementById('pw-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') analyzePassword();
+    });
+  </script>
+</body>
+</html>

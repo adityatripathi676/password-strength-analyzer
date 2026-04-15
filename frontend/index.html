@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PassGuard AI — Secure Login</title>
+  <meta name="description" content="Sign in to PassGuard AI — an intelligent password strength analyzer powered by machine learning." />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+
+    .auth-page { width: 100%; max-width: 420px; padding: 1.5rem; }
+
+    .hero-title {
+      font-size: 1.75rem; font-weight: 800;
+      background: linear-gradient(135deg, #f1f5f9, #a5b4fc);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 0.4rem;
+    }
+    .hero-sub { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 2rem; line-height: 1.5; }
+
+    .form-section { display: none; }
+    .form-section.active { display: block; }
+
+    .error-msg {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: #fca5a5; border-radius: var(--radius-sm);
+      padding: 0.65rem 1rem; font-size: 0.83rem;
+      margin-bottom: 1rem; display: none;
+    }
+    .error-msg.show { display: block; animation: fadeUp 0.3s ease; }
+
+    .features-row {
+      display: flex; gap: 1rem; justify-content: center;
+      margin-top: 2rem;
+    }
+    .feature-chip {
+      display: flex; align-items: center; gap: 0.4rem;
+      font-size: 0.75rem; color: var(--text-muted);
+    }
+    .feature-chip .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-gradient"></div>
+
+  <div class="auth-page">
+    <!-- Brand -->
+    <div class="brand" style="justify-content:center; flex-direction:column; text-align:center;">
+      <div style="display:flex;align-items:center;gap:.75rem;justify-content:center;margin-bottom:.75rem;">
+        <div class="brand-icon">🛡️</div>
+        <div>
+          <div class="brand-text">PassGuard AI</div>
+          <div class="brand-sub">AI-Powered Password Intelligence</div>
+        </div>
+      </div>
+      <h1 class="hero-title">Analyze. Protect. Secure.</h1>
+      <p class="hero-sub">
+        Your intelligent companion for evaluating password strength using<br>
+        machine learning and real-world threat intelligence.
+      </p>
+    </div>
+
+    <!-- Auth Card -->
+    <div class="card">
+      <!-- Tabs -->
+      <div class="tab-nav">
+        <button id="tab-login" class="tab-btn active" onclick="switchTab('login')">Sign In</button>
+        <button id="tab-register" class="tab-btn" onclick="switchTab('register')">Create Account</button>
+      </div>
+
+      <!-- Login Form -->
+      <div id="form-login" class="form-section active">
+        <div id="login-error" class="error-msg"></div>
+        <div class="form-group">
+          <label for="login-username">Username</label>
+          <input id="login-username" type="text" placeholder="your_username" autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <div class="input-wrap">
+            <input id="login-password" type="password" placeholder="••••••••" class="has-icon" autocomplete="current-password" />
+            <button class="input-icon" onclick="toggleVis('login-password', this)" type="button" aria-label="Toggle password visibility">👁️</button>
+          </div>
+        </div>
+        <button id="btn-login" class="btn btn-primary" onclick="handleLogin()">
+          <span id="btn-login-text">Sign In</span>
+          <span id="btn-login-spinner" class="spinner hidden"></span>
+        </button>
+
+        <p class="text-center text-muted mt-2">
+          No account? <button class="link" onclick="switchTab('register')">Create one free</button>
+        </p>
+      </div>
+
+      <!-- Register Form -->
+      <div id="form-register" class="form-section">
+        <div id="register-error" class="error-msg"></div>
+        <div class="form-group">
+          <label for="reg-username">Username</label>
+          <input id="reg-username" type="text" placeholder="choose_username" autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="reg-password">Account Password</label>
+          <div class="input-wrap">
+            <input id="reg-password" type="password" placeholder="min 6 characters" class="has-icon" autocomplete="new-password" />
+            <button class="input-icon" onclick="toggleVis('reg-password', this)" type="button" aria-label="Toggle password visibility">👁️</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="reg-confirm">Confirm Password</label>
+          <input id="reg-confirm" type="password" placeholder="repeat password" autocomplete="new-password" />
+        </div>
+        <button id="btn-register" class="btn btn-primary" onclick="handleRegister()">
+          <span id="btn-register-text">Create Account</span>
+          <span id="btn-register-spinner" class="spinner hidden"></span>
+        </button>
+
+        <p class="text-center text-muted mt-2">
+          Already have one? <button class="link" onclick="switchTab('login')">Sign in</button>
+        </p>
+      </div>
+    </div>
+
+    <!-- Feature chips -->
+    <div class="features-row">
+      <div class="feature-chip"><div class="dot"></div> ML-Powered</div>
+      <div class="feature-chip"><div class="dot"></div> JWT Secured</div>
+      <div class="feature-chip"><div class="dot"></div> Real-time AI</div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    // ── Redirect if already logged in ─────────────────────────────────
+    if (localStorage.getItem('psa_token')) {
+      window.location.replace('dashboard.html');
+    }
+
+    // ── Tab switching ─────────────────────────────────────────────────
+    function switchTab(tab) {
+      document.getElementById('form-login').classList.toggle('active', tab === 'login');
+      document.getElementById('form-register').classList.toggle('active', tab === 'register');
+      document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+      document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+    }
+
+    // ── Show/hide password ─────────────────────────────────────────────
+    function toggleVis(id, btn) {
+      const el = document.getElementById(id);
+      const isPass = el.type === 'password';
+      el.type = isPass ? 'text' : 'password';
+      btn.textContent = isPass ? '🙈' : '👁️';
+    }
+
+    // ── Toast ─────────────────────────────────────────────────────────
+    function toast(msg, type = 'info') {
+      const icon = { success: '✅', error: '❌', info: 'ℹ️' }[type] || '💬';
+      const tc = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
+      tc.appendChild(el);
+      setTimeout(() => {
+        el.style.animation = 'slideOut 0.3s ease forwards';
+        el.addEventListener('animationend', () => el.remove());
+      }, 3500);
+    }
+
+    // ── Show error inside card ─────────────────────────────────────────
+    function showError(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.classList.add('show');
+    }
+    function clearError(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    // ── Login ─────────────────────────────────────────────────────────
+    async function handleLogin() {
+      clearError('login-error');
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+
+      if (!username || !password) {
+        showError('login-error', 'Please fill in all fields.');
+        return;
+      }
+
+      setLoading('login', true);
+      try {
+        const res = await fetch(`${API}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Login failed.');
+        localStorage.setItem('psa_token', data.access_token);
+        localStorage.setItem('psa_user', username);
+        toast('Welcome back! Redirecting…', 'success');
+        setTimeout(() => window.location.replace('dashboard.html'), 800);
+      } catch (err) {
+        showError('login-error', err.message);
+      } finally {
+        setLoading('login', false);
+      }
+    }
+
+    // ── Register ──────────────────────────────────────────────────────
+    async function handleRegister() {
+      clearError('register-error');
+      const username = document.getElementById('reg-username').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const confirm  = document.getElementById('reg-confirm').value;
+
+      if (!username || !password || !confirm) {
+        showError('register-error', 'Please fill in all fields.');
+        return;
+      }
+      if (password !== confirm) {
+        showError('register-error', 'Passwords do not match.');
+        return;
+      }
+      if (password.length < 6) {
+        showError('register-error', 'Password must be at least 6 characters.');
+        return;
+      }
+
+      setLoading('register', true);
+      try {
+        const res = await fetch(`${API}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Registration failed.');
+        toast('Account created! Please sign in.', 'success');
+        switchTab('login');
+        document.getElementById('login-username').value = username;
+      } catch (err) {
+        showError('register-error', err.message);
+      } finally {
+        setLoading('register', false);
+      }
+    }
+
+    function setLoading(form, state) {
+      document.getElementById(`btn-${form}`).disabled = state;
+      document.getElementById(`btn-${form}-text`).classList.toggle('hidden', state);
+      document.getElementById(`btn-${form}-spinner`).classList.toggle('hidden', !state);
+    }
+
+    // ── Enter key support ─────────────────────────────────────────────
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        if (document.getElementById('form-login').classList.contains('active')) handleLogin();
+        else handleRegister();
+      }
+    });
+  </script>
+</body>
+</html>
